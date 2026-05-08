@@ -57,7 +57,7 @@ const server = http.createServer(app);
 wsHub.init(server);
 
 server.listen(PORT, () => {
-  logger.info('🚀 SOL 量能突破 Monitor V7.1.3 (单位修复) 启动，端口 %d', PORT);
+  logger.info('🚀 SOL 量能突破 Monitor V7.2.1 (链上解析+初次加载修复) 启动，端口 %d', PORT);
   logger.info('   模式: %s', DRY_RUN ? '🔵 空跑(DRY_RUN)' : '🔴 实盘(LIVE)');
   logger.info('   K线=%ss  轮询=%ss  止损轮询=%ss',
     process.env.KLINE_INTERVAL_SEC || 60,

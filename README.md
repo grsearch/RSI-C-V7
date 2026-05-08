@@ -1,6 +1,6 @@
-# SOL 量能突破 Monitor V7.1.3 (Volume Breakout + Anti-Trap)
+# SOL 量能突破 Monitor V7.2 (Volume Breakout + Anti-Trap)
 
-Solana 新代币纯量能突破策略机器人。**V7.1.3 关键 bug 修复** — K 线 volume 字段单位混乱（有链上数据 = SOL，无链上数据 = Birdeye token 数量），导致所有量能判断失效。修复后所有 K 线 volume 字段统一为 SOL。
+Solana 新代币纯量能突破策略机器人。**V7.2 链上解析鲁棒化** — 修复 AMM 路由 / Jupiter aggregator 多 hop 交易解析失败导致量能数据丢失的问题。
 
 **1 分钟 K 线 · Birdeye OHLCV 实时刷新 · Helius 链上 buyVol/sellVol · 5 层防陷阱 · 空跑/实盘**
 
@@ -225,7 +225,9 @@ http://YOUR_SERVER:3001
 
 ## 版本历史
 
-- **V7.1.3 (本版)** ★ 关键 bug 修复 — `_getCurrentCandles` 中 K 线 volume 字段单位混乱（有链上 tick 时为 SOL，无链上 tick 时为 Birdeye token 数量），导致 SPIKE 倍数、VOL_MIN_TOTAL、MIN_BASELINE_VOL、VOL_FADE 全部判断错误。修复：所有 K 线 volume 字段统一为 SOL，无链上数据的 K 线 volume=0；新增 `tokenVolume` 字段保留原 Birdeye 值。同时 baseline 计算也跳过 vol=0 K 线，避免数据缺口拉低基线。**Dashboard 同步清理**：删除 24H 跌幅、RSI、prevRSI 三列；删除回测面板（V7 已删除回测引擎）；按持仓状态/交易次数/加入时间排序。
+- **V7.2.1 (本版)** ★ Dashboard 初次加载空白修复 — `_stateSnapshot` 缺少 `signal/reason/volume/closedCount/candleStats/chainStats/priceFail/signalTrace` 等字段，导致 dashboard 一打开 95 个币全部空白，需要等 WS tick 推送才有数据。修复后初次加载即显示完整数据。同步在每次 poll 时把这些字段缓存到 `state._lastSignal/_lastReason/_lastVolume` 等，供 snapshot 读取。
+- **V7.2** ★ 链上解析鲁棒化 — 旧版 `_extractTrade` 仅支持 token 账户 owner = 用户钱包的简单 swap (策略 A)，遇到 AMM 路由 / Jupiter aggregator 时 token 账户 owner 是 PDA，导致解析失败。新增策略 B (fee payer fallback)。Dashboard tooltip 新增"策略A:X / 策略B:Y"诊断字段。
+- **V7.1.3** — 修复 K 线 volume 字段单位混乱 (有链上 tick=SOL, 无=Birdeye token 数量)，统一为 SOL；baseline 计算跳过 vol=0 K 线
 - **V7.1.2** — 新增 baseline 健康度门槛 (`MIN_BASELINE_VOL=10`) 过滤死币假信号 + VOL_FADE 双重检验 (`VOL_FADE_RATIO=0.5`) 防止一根放量上涨被错杀
 - **V7.1.1** — L3 改为实时突破模式 (响应 1 秒级, 不等下根 K 线收盘) + VOL_FADE 持仓初期保护 (180s) + baseline/recent 跳过 vol=0 数据缺口
 - **V7.1** — 新增 5 层防陷阱过滤 (L1 实体扎实 / L2 上影检验 / L3 跟根确认 / L4 累涨封顶 / L5 紧止损)

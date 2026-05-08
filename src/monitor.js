@@ -29,7 +29,7 @@ const POLL_SEC          = parseInt(process.env.PRICE_POLL_SEC        || '1',  10
 // ★ V7: K 线宽度从 5 分钟改为 1 分钟 (量能突破策略需要更细粒度)
 const KLINE_SEC         = parseInt(process.env.KLINE_INTERVAL_SEC    || '60', 10);
 const DRY_RUN           = (process.env.DRY_RUN || 'false') === 'true';
-const TRADE_SOL         = parseFloat(process.env.TRADE_SIZE_SOL      || '2');
+const TRADE_SOL         = parseFloat(process.env.TRADE_SIZE_SOL      || '1');
 const SELL_COOLDOWN_SEC = parseInt(process.env.SELL_COOLDOWN_SEC     || '1800', 10);
 // ★ V7: 持仓超时由 rsi.js 的 HOLD_TIMEOUT_SEC 控制 (默认 30 分钟), MAX_HOLD_SEC 已删除
 const SL_POLL_SEC       = parseInt(process.env.SL_POLL_SEC           || '30', 10);
@@ -811,6 +811,19 @@ class TokenMonitor extends EventEmitter {
         cooldownSec:    state._sellCooldownUntil > now ? Math.ceil((state._sellCooldownUntil - now) / 1000) : 0,
         recentCloses:   lastCloses.map(v => Number(v.toPrecision(6))),
       };
+
+      // ★ V7.2.1 修复 dashboard 初次加载空白问题:
+      //   _stateSnapshot 用的是这些字段, 必须在每次 poll 时更新, 不能只在 ws tick 推送时有
+      state._lastSignal      = signal || null;
+      state._lastReason      = reason || '';
+      state._lastVolume      = volume || {};
+      state._lastClosedCount = closedCandles.length;
+      state._lastCandleStats = {
+        histCount:   histLen,
+        liveCount:   liveLen,
+        mergedCount: closedCandles.length,
+        histMeta:    state._histMeta || null,
+      };
     }
 
     // 8. 记录信号
@@ -855,14 +868,10 @@ class TokenMonitor extends EventEmitter {
       birdeyeWs:   birdeye.priceStream.isConnected(),
       heliusWs:    heliusWs.isConnected(),
       heliusStats: heliusWs.getStats(),
-      // ★ 诊断：这个 token 从 Helius 收到/解析成功的链上交易笔数
+      // 诊断：这个 token 从 Helius 收到/解析成功的链上交易笔数
       chainStats:  heliusWs.getTokenStats(address),
       priceFail:   birdeye.getPriceFailStatus(address),
       xMentions:   xMentions.getMentions(address),
-      // V7: 24h 最高价/加仓已删除, 仅返回 null 以兼容旧 dashboard 字段
-      high24h:     null,
-      drop24hPct:  null,
-      addPositionsCount: 0,
       signalTrace: state._signalTrace || null,
     });
 
@@ -1160,10 +1169,19 @@ class TokenMonitor extends EventEmitter {
       lastPriceTs:  state._lastPriceTs,
       fdv:          state.fdv,
       lp:           state.lp,
-      // V7: 旧字段保留 null 以兼容旧 dashboard
-      high24h:      null,
-      drop24hPct:   null,
-      addPositionsCount: 0,
+      // ★ V7.2.1 dashboard 初次加载需要的字段 (来自最近一次 poll 的缓存)
+      //   旧版只在 WS tick 推送时才推这些字段, 导致 dashboard 一打开 95 个币全空白
+      price:        state._lastPriceUsd,
+      signal:       state._lastSignal      ?? null,
+      reason:       state._lastReason      ?? '',
+      volume:       state._lastVolume      ?? {},
+      closedCount:  state._lastClosedCount ?? 0,
+      candleStats:  state._lastCandleStats ?? null,
+      // 实时连接 / 诊断字段
+      chainStats:   heliusWs.getTokenStats(state.address),
+      priceFail:    birdeye.getPriceFailStatus(state.address),
+      xMentions:    xMentions.getMentions(state.address),
+      signalTrace:  state._signalTrace || null,
     };
   }
 

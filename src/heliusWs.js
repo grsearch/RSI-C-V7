@@ -346,9 +346,12 @@ class HeliusTradeStream {
   subscribe(tokenAddress, symbol, onTrade) {
     this._tokens.set(tokenAddress, {
       symbol, onTrade, subId: null, rpcId: null,
-      // ★ 诊断字段：每 token 的链上交易统计
+      // 诊断字段：每 token 的链上交易统计
       chainRx:     0,   // Helius 推来多少笔（匹配到这个 mint 的）
       chainParsed: 0,   // 成功解析出 buy/sell 的有几笔
+      // V7.2: 分别统计两条解析路径
+      parsedA:     0,   // 策略 A (owner 在 accountKeys, 简单 swap) 解析成功数
+      parsedB:     0,   // 策略 B (fee payer fallback, AMM 路由) 解析成功数
       lastRxTs:    0,   // 最近一笔推送时间
     });
     const count = this._tokens.size;
@@ -493,6 +496,8 @@ class HeliusTradeStream {
           if (trade) {
             this._stats.txParsed++;
             tokenInfo.chainParsed++;
+            if (trade.parser === 'A_owner')    tokenInfo.parsedA++;
+            else if (trade.parser === 'B_feepayer') tokenInfo.parsedB++;
             tokenInfo.onTrade(trade);
           }
         }
@@ -516,7 +521,11 @@ class HeliusTradeStream {
           const trade = this._extractTrade(targetToken.address, meta, txData, signature);
           if (trade) {
             this._stats.txParsed++;
-            if (origInfo) origInfo.chainParsed++;
+            if (origInfo) {
+              origInfo.chainParsed++;
+              if (trade.parser === 'A_owner')    origInfo.parsedA++;
+              else if (trade.parser === 'B_feepayer') origInfo.parsedB++;
+            }
             targetToken.onTrade(trade);
           }
           return;
@@ -534,6 +543,8 @@ class HeliusTradeStream {
           if (trade) {
             this._stats.txParsed++;
             tokenInfo.chainParsed++;
+            if (trade.parser === 'A_owner')    tokenInfo.parsedA++;
+            else if (trade.parser === 'B_feepayer') tokenInfo.parsedB++;
             tokenInfo.onTrade(trade);
           }
         }
@@ -543,6 +554,16 @@ class HeliusTradeStream {
     }
   }
 
+  // V7.2: 鲁棒解析
+  //   策略 A (原逻辑): 找 token 账户的 owner, 在 accountKeys 里查 SOL 变化
+  //     - 适用: 用户钱包直接是 token 账户 owner (简单 swap)
+  //     - 失败场景: AMM 路由 (Jupiter / Raydium / Pump.fun) 的 token 账户 owner 是 PDA
+  //                PDA 不在 accountKeys 里, 或 PDA 的 SOL 变化反映合约资金而非用户支出
+  //
+  //   策略 B (V7.2 新增 fallback): 用 fee payer (accountKeys[0]) 的 SOL 变化
+  //     - 原理: signer = fee payer = 用户, 用户的 SOL 变化最准确
+  //     - 同时累加该 mint 所有 postEntries 的 token 变化作为 token delta
+  //     - 适用: AMM/aggregator 多 hop 交易, owner 是 PDA 时
   _extractTrade(tokenAddress, meta, txData, signature) {
     const preTokenBals  = meta.preTokenBalances  || [];
     const postTokenBals = meta.postTokenBalances  || [];
@@ -560,6 +581,7 @@ class HeliusTradeStream {
     const preEntries  = preTokenBals.filter(b => b.mint === tokenAddress);
     if (postEntries.length === 0) return null;
 
+    // ─── 策略 A: 原逻辑 — owner 在 accountKeys 里 ───
     for (const postEntry of postEntries) {
       const owner = postEntry.owner;
       if (!owner) continue;
@@ -590,9 +612,66 @@ class HeliusTradeStream {
         solAmount:   Math.abs(solDelta),
         tokenAmount: Math.abs(tokenDelta),
         priceSol:    Math.abs(tokenDelta) > 0 ? Math.abs(solDelta) / Math.abs(tokenDelta) : 0,
+        parser:      'A_owner',
       };
     }
-    return null;
+
+    // ─── 策略 B (V7.2 fallback): fee payer 路径 ───
+    //   原理: 当 token 账户 owner 是 PDA, 策略 A 失败. 此时用 fee payer (= signer = 用户)
+    //   的 SOL 变化作为用户的实际成本/收入. token 变化用所有该 mint 的 postEntries 累加.
+    if (accountKeys.length === 0 || preBalances.length === 0 || postBalances.length === 0) {
+      return null;
+    }
+    const feePayer = accountKeys[0];
+    const feePayerSolDelta = (postBalances[0] - preBalances[0]) / LAMPORTS;
+    if (Math.abs(feePayerSolDelta) < 1e-9) return null;  // 没动账, 不是真交易
+
+    // 累加 fee payer 拥有的所有 token 账户的变化
+    //   注意: fee payer 可能有多个 token 账户 (主账户 + ATA), 都要累加
+    let tokenDeltaTotal = 0;
+    for (const post of postEntries) {
+      if (post.owner !== feePayer) continue;
+      const pre = preEntries.find(
+        b => b.accountIndex === post.accountIndex || b.owner === feePayer
+      );
+      const postAmt = parseFloat(post.uiTokenAmount?.uiAmount ?? '0');
+      const preAmt  = pre ? parseFloat(pre.uiTokenAmount?.uiAmount ?? '0') : 0;
+      tokenDeltaTotal += (postAmt - preAmt);
+    }
+
+    // 如果 fee payer 没拥有该 token 账户 (postEntries 里 owner 都不是 feePayer)
+    // 但有 preEntries 里 owner 是 feePayer (卖完了 ATA 被关闭) — 处理这种情况
+    if (Math.abs(tokenDeltaTotal) < 1e-12) {
+      for (const pre of preEntries) {
+        if (pre.owner !== feePayer) continue;
+        const post = postEntries.find(
+          b => b.accountIndex === pre.accountIndex || b.owner === feePayer
+        );
+        const preAmt = parseFloat(pre.uiTokenAmount?.uiAmount ?? '0');
+        const postAmt = post ? parseFloat(post.uiTokenAmount?.uiAmount ?? '0') : 0;
+        tokenDeltaTotal += (postAmt - preAmt);
+      }
+    }
+
+    if (Math.abs(tokenDeltaTotal) < 1e-12) return null;
+
+    // 注意: feePayerSolDelta 包含 gas fee (~5000 lamports = 0.000005 SOL)
+    //       这个量级相对交易金额可忽略, 不做修正
+    const isBuy  = tokenDeltaTotal > 0 && feePayerSolDelta < 0;
+    const isSell = tokenDeltaTotal < 0 && feePayerSolDelta > 0;
+    if (!isBuy && !isSell) return null;
+
+    return {
+      ts: Date.now(),
+      signature,
+      tokenAddress,
+      owner: feePayer,
+      isBuy,
+      solAmount:   Math.abs(feePayerSolDelta),
+      tokenAmount: Math.abs(tokenDeltaTotal),
+      priceSol:    Math.abs(feePayerSolDelta) / Math.abs(tokenDeltaTotal),
+      parser:      'B_feepayer',
+    };
   }
 
   // ── 状态查询 ──────────────────────────────────────────────
@@ -636,6 +715,8 @@ class HeliusTradeStream {
       subId:       subIdShown,
       chainRx:     info.chainRx || 0,
       chainParsed: info.chainParsed || 0,
+      parsedA:     info.parsedA || 0,
+      parsedB:     info.parsedB || 0,
       lastRxTs:    info.lastRxTs || 0,
     };
   }

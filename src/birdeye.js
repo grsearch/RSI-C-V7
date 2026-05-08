@@ -512,49 +512,6 @@ function getOhlcvCacheStats() {
   return stats;
 }
 
-// ★ 24h 最高价缓存：用于计算 24h 跌幅
-//   走 Birdeye OHLCV 1h 间隔 × 25 根 (覆盖完整 24 小时 + 余量), 比 5 分钟 × 288 根省 CU
-//   缓存 TTL 默认 10 分钟 (跌幅判断不需要秒级精度)
-const _high24hCache = new Map(); // address → { high, ts }
-const HIGH24H_CACHE_MS = parseInt(process.env.HIGH24H_CACHE_MS || String(10 * 60 * 1000), 10);
-
-async function get24hHigh(address) {
-  const cached = _high24hCache.get(address);
-  if (cached && Date.now() - cached.ts < HIGH24H_CACHE_MS) {
-    return cached.high;
-  }
-  // 拉 1 小时 K 线 25 根 (覆盖最近 24 小时)
-  // 注意: KLINE_TYPE_MAP 必须包含 3600 (1h), 否则会自动映射到最接近的
-  const candles = await getOHLCV(address, 3600, 25);
-  if (!candles || candles.length === 0) {
-    // 拉取失败 → 短期缓存 null (HIST_FETCH_GAP_MS 级别，让串行队列重试时能真正重新拉取)
-    // 旧逻辑缓存 5 分钟会导致队列退避重试命中缓存直接返回 null
-    _high24hCache.set(address, { high: null, ts: Date.now() - HIGH24H_CACHE_MS + 3000 });
-    return null;
-  }
-  // 取最近 24 小时内最高 high
-  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-  let maxHigh = -Infinity;
-  for (const c of candles) {
-    if (c.openTime >= cutoff && Number.isFinite(c.high) && c.high > maxHigh) {
-      maxHigh = c.high;
-    }
-  }
-  if (!Number.isFinite(maxHigh) || maxHigh <= 0) {
-    _high24hCache.set(address, { high: null, ts: Date.now() });
-    return null;
-  }
-  _high24hCache.set(address, { high: maxHigh, ts: Date.now() });
-  return maxHigh;
-}
-
-function getCached24hHigh(address) {
-  const entry = _high24hCache.get(address);
-  if (!entry) return null;
-  // 即使过期也返回（调用方自己决定是否拉新的）
-  return entry.high;
-}
-
 // ★ V5-24: 代币创建时间获取与持久化
 //   走 Birdeye /defi/token_creation_info 专门接口
 //   blockUnixTime 永远不变, 持久化到磁盘, 程序重启不丢
@@ -774,4 +731,4 @@ async function getOHLCV(address, intervalSec, bars = 150) {
   }
 }
 
-module.exports = { getPrice, getPriceFailStatus, getPriceStats, getFdv, getCachedFdv, getFdvFresh, getLiquidity, getV24hUSD, getOverview, getSymbol, getRecentOHLCV, getOhlcvCacheStats, getCreationInfo, get24hHigh, getCached24hHigh, clearCache, priceStream, getOHLCV };
+module.exports = { getPrice, getPriceFailStatus, getPriceStats, getFdv, getCachedFdv, getFdvFresh, getLiquidity, getV24hUSD, getOverview, getSymbol, getRecentOHLCV, getOhlcvCacheStats, getCreationInfo, clearCache, priceStream, getOHLCV };

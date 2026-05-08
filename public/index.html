@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>SOL 量能突破 Monitor V7.1.3</title>
+<title>SOL 量能突破 Monitor V7.2.1</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   body{background:#0d1117;color:#e6edf3;font-family:'Consolas',monospace;font-size:13px}
@@ -59,7 +59,7 @@
 </head>
 <body>
 <header>
-  <h1>🤖 SOL 量能突破 V7.1.3</h1>
+  <h1>🤖 SOL 量能突破 V7.2.1</h1>
   <span id="mode-badge" class="badge blue">模式加载中...</span>
   <span id="ws-status" class="badge gray">⚡ 连接中...</span>
   <span id="token-count" class="badge gray">0 代币</span>
@@ -294,7 +294,7 @@ function _updateTickCells(tr, d) {
   let bsTitle = `Buy/Sell SOL (${d.volume?.windowSec||60}s)`;
   if (cs) {
     const ago = cs.lastRxTs ? Math.floor((Date.now() - cs.lastRxTs) / 1000) + 's前' : '从未';
-    bsTitle += `\nHelius收到: ${cs.chainRx} 笔 / 解析成功: ${cs.chainParsed} 笔\n最后一笔: ${ago}\nsubId: ${cs.subId ?? '(pump全局)'}`;
+    bsTitle += `\nHelius收到: ${cs.chainRx} 笔 / 解析成功: ${cs.chainParsed} 笔 (策略A:${cs.parsedA||0} / 策略B:${cs.parsedB||0})\n最后一笔: ${ago}\nsubId: ${cs.subId ?? '(pump全局)'}`;
   }
   if (st) {
     const ago = Math.max(0, Math.floor((Date.now() - st.ts) / 1000));
