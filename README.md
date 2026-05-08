@@ -1,6 +1,6 @@
-# SOL 量能突破 Monitor V7.2 (Volume Breakout + Anti-Trap)
+# SOL 量能突破 Monitor V7.2.2 (Volume Breakout + Anti-Trap)
 
-Solana 新代币纯量能突破策略机器人。**V7.2 链上解析鲁棒化** — 修复 AMM 路由 / Jupiter aggregator 多 hop 交易解析失败导致量能数据丢失的问题。
+Solana 新代币纯量能突破策略机器人。**V7.2.2 门槛校准** — `VOL_MIN_TOTAL` 5→2 SOL, `MIN_BASELINE_VOL` 10→3 SOL/min, `VOL_SPIKE_LOOKBACK` 20→15 分钟。1 分钟 K 线下原门槛对大多数 memecoin 太严，导致白天也很少触发信号。
 
 **1 分钟 K 线 · Birdeye OHLCV 实时刷新 · Helius 链上 buyVol/sellVol · 5 层防陷阱 · 空跑/实盘**
 
@@ -225,7 +225,8 @@ http://YOUR_SERVER:3001
 
 ## 版本历史
 
-- **V7.2.1 (本版)** ★ Dashboard 初次加载空白修复 — `_stateSnapshot` 缺少 `signal/reason/volume/closedCount/candleStats/chainStats/priceFail/signalTrace` 等字段，导致 dashboard 一打开 95 个币全部空白，需要等 WS tick 推送才有数据。修复后初次加载即显示完整数据。同步在每次 poll 时把这些字段缓存到 `state._lastSignal/_lastReason/_lastVolume` 等，供 snapshot 读取。
+- **V7.2.2 (本版)** 门槛校准 — 实战 7+3 小时仅 1 笔信号(白天也几乎不触发), 原门槛对 1 分钟 K 线 + memecoin 实际链上活动太严. 校准: `VOL_MIN_TOTAL` 5→2 SOL, `MIN_BASELINE_VOL` 10→3 SOL/min, `VOL_SPIKE_LOOKBACK` 20→15. 不动 5×/65%/5%/5 层防陷阱 (策略灵魂参数).
+- **V7.2.1** ★ Dashboard 初次加载空白修复 — `_stateSnapshot` 缺少 `signal/reason/volume/closedCount/candleStats/chainStats/priceFail/signalTrace` 等字段，导致 dashboard 一打开 95 个币全部空白，需要等 WS tick 推送才有数据。修复后初次加载即显示完整数据。同步在每次 poll 时把这些字段缓存到 `state._lastSignal/_lastReason/_lastVolume` 等，供 snapshot 读取。
 - **V7.2** ★ 链上解析鲁棒化 — 旧版 `_extractTrade` 仅支持 token 账户 owner = 用户钱包的简单 swap (策略 A)，遇到 AMM 路由 / Jupiter aggregator 时 token 账户 owner 是 PDA，导致解析失败。新增策略 B (fee payer fallback)。Dashboard tooltip 新增"策略A:X / 策略B:Y"诊断字段。
 - **V7.1.3** — 修复 K 线 volume 字段单位混乱 (有链上 tick=SOL, 无=Birdeye token 数量)，统一为 SOL；baseline 计算跳过 vol=0 K 线
 - **V7.1.2** — 新增 baseline 健康度门槛 (`MIN_BASELINE_VOL=10`) 过滤死币假信号 + VOL_FADE 双重检验 (`VOL_FADE_RATIO=0.5`) 防止一根放量上涨被错杀

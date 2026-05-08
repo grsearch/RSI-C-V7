@@ -28,17 +28,20 @@ const KLINE_SEC = parseInt(process.env.KLINE_INTERVAL_SEC || '60', 10);  // ★ 
 // ─── 买入参数 ──────────────────────────────────────────────────────
 // 量能爆发: 当根 K 线 volume vs 之前 VOL_SPIKE_LOOKBACK 根均量
 const VOL_SPIKE_MULT     = parseFloat(process.env.VOL_SPIKE_MULT     || '5');   // 5×
-const VOL_SPIKE_LOOKBACK = parseInt(process.env.VOL_SPIKE_LOOKBACK   || '20', 10); // 过去 20 根 K 线
+// V7.2.2: 20→15 根, baseline 窗口缩短让 "启动前的安静期" 反应更敏感
+const VOL_SPIKE_LOOKBACK = parseInt(process.env.VOL_SPIKE_LOOKBACK   || '15', 10); // 过去 15 分钟均量
 // 买盘主导: buyVol 占比
 const BUY_DOMINANCE_PCT  = parseFloat(process.env.BUY_DOMINANCE_PCT  || '65');  // 65%
 // 价格跟涨: 1 分钟内涨幅
 const PRICE_MOMENTUM_PCT = parseFloat(process.env.PRICE_MOMENTUM_PCT || '5');   // 5%
 // 最低绝对成交量 (SOL) — 避免微量假突破
-const VOL_MIN_TOTAL      = parseFloat(process.env.VOL_MIN_TOTAL      || '5');   // 5 SOL
+// V7.2.2: 5→2 SOL, 1 分钟链上 SOL 量门槛对 memecoin 太严, 大量真实启动被卡
+const VOL_MIN_TOTAL      = parseFloat(process.env.VOL_MIN_TOTAL      || '2');   // 2 SOL
 // ★ V7.1.2: 最低 baseline 成交量 (SOL/min) — baseline 太低则不买
 //   原理: baseline=0.2 SOL 时, 一根 5 SOL 的普通成交就被算成 25× "爆发"
-//   实际上是死币偶发交易, 不是启动. 默认 10 SOL/min = 这个币过去 20 分钟有合理活性.
-const MIN_BASELINE_VOL   = parseFloat(process.env.MIN_BASELINE_VOL   || '10');  // 10 SOL/min
+//   实际上是死币偶发交易, 不是启动. 默认 3 SOL/min = 这个币过去 15 分钟有合理活性.
+// V7.2.2: 10→3 SOL/min, 1 分钟内要 10 SOL 太苛刻, 大部分时段 80%+ 币卡死
+const MIN_BASELINE_VOL   = parseFloat(process.env.MIN_BASELINE_VOL   || '3');   // 3 SOL/min
 // 启动后跳过前 N 根 K 线 (等量能基线收敛)
 const SKIP_FIRST_CANDLES = parseInt(process.env.SKIP_FIRST_CANDLES   || '3', 10);
 
